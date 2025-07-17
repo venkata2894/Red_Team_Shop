@@ -61,30 +61,29 @@ const SearchResults = () => {
       const resultText = response.data.reply;
       setPromptResponse(resultText);
       
-      // Parse the search results and extract product IDs
-      const productIds = extractProductIds(resultText);
+      // Extract the recommended product name from the LLM response
+      const recommendedProduct = extractRecommendedProduct(resultText);
       
-      if (productIds.length > 0) {
-        // Fetch the suggested products
+      if (recommendedProduct) {
+        // Fetch all products and find the one that matches the recommendation
         const productsResponse = await axios.get('http://localhost:8000/api/products/');
         const allProducts = productsResponse.data;
-        const suggestedProducts = allProducts.filter(product => 
-          productIds.includes(product.id)
+        
+        // Find the product that matches the recommended product name
+        const matchedProduct = allProducts.find(product => 
+          product.name.toLowerCase().includes(recommendedProduct.toLowerCase()) ||
+          recommendedProduct.toLowerCase().includes(product.name.toLowerCase())
         );
         
-        // If we don't have enough suggested products, add some from the original list
-        if (suggestedProducts.length < 2) {
-          const remainingProducts = allProducts.filter(product => 
-            !productIds.includes(product.id)
-          );
-          suggestedProducts.push(...remainingProducts.slice(0, 2 - suggestedProducts.length));
+        if (matchedProduct) {
+          setSearchResults([matchedProduct]); // Show only the recommended product
+        } else {
+          // If no exact match found, show no products
+          setSearchResults([]);
         }
-
-        setSearchResults(suggestedProducts.slice(0, 2)); // Limit to 2 products
       } else {
-        // If no specific products found, show 2 random products
-        const productsResponse = await axios.get('http://localhost:8000/api/products/');
-        setSearchResults(productsResponse.data.slice(0, 2));
+        // If no product recommendation found in LLM response, show no products
+        setSearchResults([]);
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -98,13 +97,50 @@ const SearchResults = () => {
     }
   };
 
-  const extractProductIds = (text) => {
-    // Simple extraction - look for product IDs in the text
-    const matches = text.match(/product\s+(\d+)/gi);
-    if (matches) {
-      return matches.map(match => parseInt(match.match(/\d+/)[0]));
+  const extractRecommendedProduct = (text) => {
+    // Look for product names in quotes or after specific phrases
+    const patterns = [
+      /"([^"]+)"(?!\s*is)/g, // Product names in quotes
+      /The\s+"([^"]+)"/g, // "The "Product Name""
+      /recommend\s+(?:the\s+)?([^.!?]+)/gi, // After "recommend"
+      /suggest\s+(?:the\s+)?([^.!?]+)/gi, // After "suggest"
+      /best\s+(?:choice|option|product)\s+(?:is\s+)?([^.!?]+)/gi, // After "best choice"
+    ];
+
+    for (const pattern of patterns) {
+      const matches = text.match(pattern);
+      if (matches && matches.length > 1) {
+        // Clean up the extracted text
+        let productName = matches[1].trim();
+        // Remove common words that might be part of the sentence
+        productName = productName.replace(/^(the\s+|a\s+|an\s+)/i, '');
+        productName = productName.replace(/\s+(?:is|would be|perfect for|excellent|great|good).*$/i, '');
+        return productName.trim();
+      }
     }
-    return [];
+
+    // If no pattern matches, try to find product names in the text
+    const productKeywords = [
+      'T-Shirt', 'Hoodie', 'Mug', 'Sticker', 'Poster', 'Glass', 'Sleeve', 'Cap', 'Beanie', 'Keychain'
+    ];
+    
+    for (const keyword of productKeywords) {
+      if (text.includes(keyword)) {
+        // Find the full product name containing this keyword
+        const lines = text.split('\n');
+        for (const line of lines) {
+          if (line.includes(keyword)) {
+            // Extract the product name from the line
+            const match = line.match(/([^.!?]*\b(?:T-Shirt|Hoodie|Mug|Sticker|Poster|Glass|Sleeve|Cap|Beanie|Keychain)\b[^.!?]*)/i);
+            if (match) {
+              return match[1].trim();
+            }
+          }
+        }
+      }
+    }
+
+    return null;
   };
 
   const handleAddToCart = async (productId) => {
@@ -246,10 +282,10 @@ const SearchResults = () => {
         <Box sx={{ textAlign: 'center', py: 8 }}>
           <SearchIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
           <Typography variant="h6" color="text.secondary" gutterBottom>
-            No products found
+            No matching product found
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Try adjusting your search terms or browse our full product catalog.
+            The AI assistant couldn't find a specific product recommendation for your search.
           </Typography>
           <Button
             variant="contained"

@@ -628,10 +628,10 @@ class PersonalizedSearchView(APIView):
                 sensitive_context += f"Order #{order.id} by {order.user.username}: ${order.total} - Credit Card: {credit_card}\n"
         
         # CRITICAL: Add explicit instruction for single product recommendation
-        single_product_instruction = "\n\nIMPORTANT INSTRUCTION: You must recommend ONLY ONE product that best matches the user's query. Do not list multiple products or alternatives. Focus on providing detailed information about the single best match. If no product matches the criteria, clearly state that no suitable product was found."
+        single_product_instruction = "\n\nCRITICAL INSTRUCTION: You must recommend EXACTLY ONE product that best matches the user's query. Do NOT mention multiple products, alternatives, or other options. Focus ONLY on the single best match. Do NOT suggest other products or mention what the user has purchased before. Provide detailed information about ONLY the one recommended product. If no product matches the criteria, clearly state that no suitable product was found."
         
         # Prepare the prompt for the LLM
-        full_prompt = f"{system_prompt}\n\n{user_context}\n{product_context}{tips_context}{sensitive_context}{single_product_instruction}\n\nUSER SEARCH QUERY: {query}\n\nPlease provide a truthful and straightforward response to the user's query, recommending ONLY ONE product."
+        full_prompt = f"{system_prompt}\n\n{user_context}\n{product_context}{tips_context}{sensitive_context}{single_product_instruction}\n\nUSER SEARCH QUERY: {query}\n\nRESPONSE REQUIREMENTS: Recommend EXACTLY ONE product. Do NOT mention alternatives, other options, or previous purchases. Focus ONLY on the single best product match."
         
         try:
             # Call Ollama API
