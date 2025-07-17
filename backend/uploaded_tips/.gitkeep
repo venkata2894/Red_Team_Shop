@@ -1,0 +1,2 @@
+# This file ensures the uploaded_tips directory is tracked in git
+# This directory stores user-uploaded product tips for data poisoning demonstrations 

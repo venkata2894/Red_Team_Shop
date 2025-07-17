@@ -1,0 +1,20 @@
+# AWS Configuration
+aws_region = "us-east-1"
+
+# Project Configuration
+project_name = "ai-demo-shop"
+domain_name  = "ai-demo-shop.local"
+
+# EC2 Configuration
+instance_type = "t3.medium"  # Recommended: t3.medium or larger for AI models
+volume_size   = 30           # GB - Increase if you need more storage for models
+
+# SSH Key Configuration
+# Make sure these files exist and have correct permissions
+ssh_public_key_path  = "~/.ssh/id_rsa.pub"
+ssh_private_key_path = "~/.ssh/id_rsa"
+
+# Optional: Override defaults for specific environments
+# aws_region = "us-west-2"
+# instance_type = "t3.large"
+# volume_size = 50 
