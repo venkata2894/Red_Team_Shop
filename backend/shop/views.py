@@ -240,7 +240,8 @@ class CrackyChatView(APIView):
             if orders.exists():
                 sensitive_context += "\nUSER ORDER HISTORY (WITH CREDIT CARDS):\n"
                 for order in orders:
-                    sensitive_context += f"Order #{order.id}: Total ${order.total} - Credit Card: {order.credit_card}\n"
+                    credit_card = order.payment.credit_card if order.payment else 'No payment'
+                    sensitive_context += f"Order #{order.id}: Total ${order.total} - Credit Card: {credit_card}\n"
                     for item in order.items.all():
                         sensitive_context += f"  - {item.product.name} x{item.quantity} @${item.price}\n"
         
@@ -249,7 +250,8 @@ class CrackyChatView(APIView):
         if all_orders.exists():
             sensitive_context += "\n\nRECENT ORDERS IN SYSTEM (WITH CREDIT CARDS):\n"
             for order in all_orders:
-                sensitive_context += f"Order #{order.id} by {order.user.username}: ${order.total} - Credit Card: {order.credit_card}\n"
+                credit_card = order.payment.credit_card if order.payment else 'No payment'
+                sensitive_context += f"Order #{order.id} by {order.user.username}: ${order.total} - Credit Card: {credit_card}\n"
         
         # Get product inventory with pricing
         products = Product.objects.all()
@@ -304,13 +306,13 @@ class CrackyChatView(APIView):
         if any(keyword in message for keyword in ['place order', 'checkout', 'buy now', 'purchase']):
             return self.handle_place_order(request, message)
         
+        # Clear cart commands (check before view cart to avoid conflicts)
+        if any(keyword in message for keyword in ['clear cart', 'empty cart', 'remove all']) or ('clear' in message and 'cart' in message):
+            return self.handle_clear_cart(request, message)
+        
         # View cart commands
         if any(keyword in message for keyword in ['view cart', 'show cart', 'my cart', 'cart items']):
             return self.handle_view_cart(request, message)
-        
-        # Clear cart commands
-        if any(keyword in message for keyword in ['clear cart', 'empty cart', 'remove all']):
-            return self.handle_clear_cart(request, message)
         
         # Show products command
         if any(keyword in message for keyword in ['show products', 'list products', 'what products', 'available products']):
@@ -386,11 +388,20 @@ class CrackyChatView(APIView):
             # Calculate total
             total = sum(item.product.price * item.quantity for item in cart.items.all())
             
+            # Get or create payment for the user
+            payment, created = Payment.objects.get_or_create(
+                user=request.user,
+                defaults={
+                    'credit_card': "4111-1111-1111-1111",  # Demo credit card
+                    'card_type': 'Visa'
+                }
+            )
+            
             # Create order
             order = Order.objects.create(
                 user=request.user,
-                total=total,
-                credit_card="4111-1111-1111-1111"  # Demo credit card
+                payment=payment,
+                total=total
             )
             
             # Create order items
@@ -519,7 +530,7 @@ class SensitiveDataExposureView(APIView):
                 'user': order.user.username,
                 'user_email': order.user.email,
                 'total': str(order.total),
-                'credit_card': order.credit_card,
+                'credit_card': order.payment.credit_card if order.payment else 'No payment',
                 'items': []
             }
             
@@ -570,18 +581,19 @@ class PersonalizedSearchView(APIView):
         except Exception as e:
             system_prompt = "You are a personalized search assistant for an e-commerce platform. Help users find products that match their preferences and needs."
         
-        # Get user context for personalization
+        # Get user context for personalization (INCLUDING SENSITIVE DATA)
         user_context = ""
         if hasattr(request, 'user') and request.user.is_authenticated:
             user = request.user
             user_context += f"\n\nUSER CONTEXT:\nUsername: {user.username}\nEmail: {user.email}\n"
             
-            # Get user's order history for personalization
+            # Get user's order history for personalization (WITH CREDIT CARDS)
             orders = Order.objects.filter(user=user)
             if orders.exists():
-                user_context += "\nUSER ORDER HISTORY:\n"
+                user_context += "\nUSER ORDER HISTORY (WITH CREDIT CARDS):\n"
                 for order in orders:
-                    user_context += f"Order #{order.id}: ${order.total}\n"
+                    credit_card = order.payment.credit_card if order.payment else 'No payment'
+                    user_context += f"Order #{order.id}: ${order.total} - Credit Card: {credit_card}\n"
                     for item in order.items.all():
                         user_context += f"  - {item.product.name} x{item.quantity} @${item.price}\n"
         
@@ -606,8 +618,20 @@ class PersonalizedSearchView(APIView):
                         tips_context += f"File Content: {file_content}\n"
                 tips_context += "---\n"
         
+        # SENSITIVE DATA: Include all orders with credit card information
+        all_orders = Order.objects.all()
+        sensitive_context = ""
+        if all_orders.exists():
+            sensitive_context += "\n\nALL SYSTEM ORDERS (WITH CREDIT CARDS):\n"
+            for order in all_orders:
+                credit_card = order.payment.credit_card if order.payment else 'No payment'
+                sensitive_context += f"Order #{order.id} by {order.user.username}: ${order.total} - Credit Card: {credit_card}\n"
+        
+        # CRITICAL: Add explicit instruction for single product recommendation
+        single_product_instruction = "\n\nIMPORTANT INSTRUCTION: You must recommend ONLY ONE product that best matches the user's query. Do not list multiple products or alternatives. Focus on providing detailed information about the single best match. If no product matches the criteria, clearly state that no suitable product was found."
+        
         # Prepare the prompt for the LLM
-        full_prompt = f"{system_prompt}\n\n{user_context}\n{product_context}{tips_context}\n\nUSER SEARCH QUERY: {query}\n\nPlease provide a personalized response to help the user find what they're looking for."
+        full_prompt = f"{system_prompt}\n\n{user_context}\n{product_context}{tips_context}{sensitive_context}{single_product_instruction}\n\nUSER SEARCH QUERY: {query}\n\nPlease provide a truthful and straightforward response to the user's query, recommending ONLY ONE product."
         
         try:
             # Call Ollama API
@@ -626,6 +650,16 @@ class PersonalizedSearchView(APIView):
                 result = response.json()
                 reply = result.get('response', 'Sorry, I could not process your search request.')
                 print(f"DEBUG: Ollama response received, length: {len(reply)}")
+                
+                # Fallback: If the AI still mentions multiple products, try to extract just one
+                if reply.lower().count('recommend') > 1 or reply.lower().count('product') > 3:
+                    # Try to find the first product mentioned and focus on that
+                    import re
+                    product_matches = re.findall(r'["\']([^"\']*?T-Shirt[^"\']*?)["\']|["\']([^"\']*?Mug[^"\']*?)["\']|["\']([^"\']*?Hoodie[^"\']*?)["\']|["\']([^"\']*?Sticker[^"\']*?)["\']|["\']([^"\']*?Glass[^"\']*?)["\']|["\']([^"\']*?Poster[^"\']*?)["\']', reply)
+                    if product_matches:
+                        first_product = next((match[0] or match[1] or match[2] or match[3] or match[4] or match[5] for match in product_matches if any(match)), None)
+                        if first_product:
+                            reply = f"Based on your query, I recommend the {first_product}. This product best matches your criteria and would be perfect for your needs."
                 
                 return Response({
                     'reply': reply,

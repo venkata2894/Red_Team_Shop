@@ -130,4 +130,4 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 # Media files (for product images)
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR.parent / 'imgs'
+MEDIA_ROOT = BASE_DIR / 'media'

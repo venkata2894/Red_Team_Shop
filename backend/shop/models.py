@@ -42,11 +42,21 @@ class ProductTip(models.Model):
                 return f"Error reading file: {str(e)}"
         return None
 
+class Payment(models.Model):
+    """Model for storing payment information including credit card details"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    credit_card = models.CharField(max_length=32)  # For sensitive info leakage demo
+    card_type = models.CharField(max_length=20, default='Visa')  # Visa, MasterCard, etc.
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"Payment by {self.user.username} - {self.credit_card}"
+
 class Order(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
+    payment = models.ForeignKey(Payment, on_delete=models.CASCADE, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     total = models.DecimalField(max_digits=10, decimal_places=2)
-    credit_card = models.CharField(max_length=32)  # For sensitive info leakage demo
 
 class OrderItem(models.Model):
     order = models.ForeignKey(Order, related_name='items', on_delete=models.CASCADE)

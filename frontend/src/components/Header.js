@@ -83,7 +83,7 @@ const Header = () => {
             sx={{ cursor: 'pointer', mr: 2 }}
             onClick={() => navigate('/')}
           >
-            AI Demo Shop
+            Red Team Shop
           </Typography>
           
           {isLoggedIn && (

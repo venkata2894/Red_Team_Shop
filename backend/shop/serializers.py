@@ -1,11 +1,18 @@
 from rest_framework import serializers
-from .models import Product, Review, Order, OrderItem, Cart, CartItem, ProductTip
+from .models import Product, Review, Order, OrderItem, Cart, CartItem, ProductTip, Payment
 from django.contrib.auth.models import User
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email']
+
+class PaymentSerializer(serializers.ModelSerializer):
+    user_name = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = Payment
+        fields = ['id', 'user_name', 'credit_card', 'card_type', 'created_at']
 
 class ProductSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -80,10 +87,11 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     user_name = serializers.CharField(source='user.username', read_only=True)
+    payment = PaymentSerializer(read_only=True)
     
     class Meta:
         model = Order
-        fields = ['id', 'user_name', 'created_at', 'total', 'items']
+        fields = ['id', 'user_name', 'created_at', 'total', 'items', 'payment']
 
 class CartItemSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source='product.name', read_only=True)
